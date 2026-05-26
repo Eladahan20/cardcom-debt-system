@@ -154,7 +154,39 @@ export default {
         }, 500);
       }
     }
+    if (url.pathname === "/api/debt-cases" && request.method === "GET") {
+  const result = await env.DB.prepare(`
+    SELECT
+      dc.id,
+      dc.status,
+      dc.first_failed_at,
+      dc.last_failed_at,
+      dc.failure_count,
+      dc.last_failure_reason,
+      dc.card_replaced,
+      dc.card_replaced_at,
+      dc.current_last4,
+      dc.closed_at,
 
+      c.cardcom_customer_number,
+      c.name,
+      c.email,
+      c.id_number,
+      c.monthly_amount
+
+    FROM debt_cases dc
+    JOIN customers c ON c.id = dc.customer_id
+    WHERE dc.closed_at IS NULL
+    ORDER BY dc.last_failed_at DESC
+    LIMIT 1000
+  `).all();
+
+  return json({
+    ok: true,
+    total: result.results.length,
+    cases: result.results,
+  });
+}
     return json({ error: "Not found" }, 404);
   },
 };

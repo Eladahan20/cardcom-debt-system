@@ -1,0 +1,113 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #f5f7fb;
+  color: #111;
+}
+
+.page {
+  padding: 24px;
+}
+
+.header {
+  margin-bottom: 24px;
+}
+
+h1 {
+  margin: 0 0 16px;
+}
+
+.stats {
+  display: flex;
+  gap: 16px;
+}
+
+.stat-card {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  min-width: 180px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+
+.stat-number {
+  font-size: 32px;
+  font-weight: bold;
+}
+
+.stat-label {
+  margin-top: 8px;
+  color: #666;
+}
+
+.table-wrapper {
+  background: white;
+  border-radius: 12px;
+  overflow: auto;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th {
+  background: #f0f3f8;
+  text-align: right;
+  padding: 14px;
+  font-size: 14px;
+}
+
+td {
+  padding: 14px;
+  border-top: 1px solid #eee;
+  vertical-align: top;
+}
+
+tr:hover {
+  background: #fafcff;
+}
+
+.reason {
+  max-width: 320px;
+  font-size: 13px;
+  color: #555;
+}
+
+.status {
+  display: inline-flex;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.status-ACTIVE_CARD_AUDIT {
+  background: #e7f0ff;
+  color: #1b5fcc;
+}
+
+.status-CARD_REPLACE_REQUIRED {
+  background: #ffe7e7;
+  color: #c62828;
+}
+
+.status-CARD_REPLACED_WAITING_CHARGE {
+  background: #fff3d6;
+  color: #a46b00;
+}
+
+.status-CLOSED_SUCCESS {
+  background: #e8f7e8;
+  color: #2e7d32;
+}
+
+.loading {
+  padding: 40px;
+  font-size: 20px;
+}
