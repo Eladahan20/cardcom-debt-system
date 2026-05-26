@@ -1,0 +1,8 @@
+name = "cardcom-debt"
+main = "worker/index.js"
+compatibility_date = "2026-05-26"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "cardcom-debt-db"
+database_id = "ab486913-4be3-47f1-877a-4e9e0353699f"
