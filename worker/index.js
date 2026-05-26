@@ -154,7 +154,7 @@ export default {
         }, 500);
       }
     }
-    if (url.pathname === "/api/debt-cases" && request.method === "GET") {
+if (url.pathname === "/api/debt-cases" && request.method === "GET") {
   const result = await env.DB.prepare(`
     SELECT
       dc.id,
@@ -167,6 +167,30 @@ export default {
       dc.card_replaced_at,
       dc.current_last4,
       dc.closed_at,
+
+      CAST(
+        julianday('now') - julianday(dc.first_failed_at)
+        AS INTEGER
+      ) AS days_in_debt,
+
+      CASE
+        WHEN dc.status = 'CARD_REPLACED_WAITING_CHARGE'
+          THEN 'החליף כרטיס - להמתין לחיוב הבא'
+
+        WHEN dc.status = 'CARD_REPLACE_REQUIRED'
+          THEN 'לשלוח לינק החלפת כרטיס'
+
+        WHEN CAST(julianday('now') - julianday(dc.first_failed_at) AS INTEGER) >= 36
+          THEN 'צריך שיחה'
+
+        WHEN CAST(julianday('now') - julianday(dc.first_failed_at) AS INTEGER) >= 33
+          THEN 'צריך וואטסאפ'
+
+        WHEN CAST(julianday('now') - julianday(dc.first_failed_at) AS INTEGER) >= 30
+          THEN 'מייל קארדקום אמור להישלח'
+
+        ELSE 'במעקב קארדקום'
+      END AS recommended_action,
 
       c.cardcom_customer_number,
       c.name,
@@ -185,6 +209,65 @@ export default {
     ok: true,
     total: result.results.length,
     cases: result.results,
+  });
+}
+if (url.pathname.startsWith("/api/debt-cases/") && request.method === "GET") {
+  const caseId = url.pathname.split("/").pop();
+
+  const debtCase = await env.DB.prepare(`
+    SELECT
+      dc.*,
+      c.cardcom_customer_number,
+      c.name,
+      c.email,
+      c.id_number,
+      c.current_last4 AS customer_current_last4,
+      c.previous_last4,
+      c.monthly_amount
+    FROM debt_cases dc
+    JOIN customers c ON c.id = dc.customer_id
+    WHERE dc.id = ?
+  `).bind(caseId).first();
+
+  if (!debtCase) {
+    return json({ error: "Debt case not found" }, 404);
+  }
+
+  const transactions = await env.DB.prepare(`
+    SELECT
+      id,
+      cardcom_transaction_number,
+      transaction_datetime,
+      response_text,
+      response_category,
+      amount,
+      last4,
+      transaction_type,
+      brand,
+      charge_location
+    FROM transactions
+    WHERE customer_id = ?
+    ORDER BY transaction_datetime DESC
+    LIMIT 100
+  `).bind(debtCase.customer_id).all();
+
+  const events = await env.DB.prepare(`
+    SELECT
+      id,
+      event_type,
+      event_text,
+      created_by,
+      created_at
+    FROM case_events
+    WHERE case_id = ?
+    ORDER BY created_at DESC
+  `).bind(caseId).all();
+
+  return json({
+    ok: true,
+    case: debtCase,
+    transactions: transactions.results,
+    events: events.results,
   });
 }
     return json({ error: "Not found" }, 404);
