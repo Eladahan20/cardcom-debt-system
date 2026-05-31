@@ -32,7 +32,6 @@ export default function App() {
       const response = await fetch(
         `http://localhost:8787/api/debt-cases/${item.id}`
       );
-
       const data = await response.json();
       setCaseDetails(data);
     } finally {
@@ -69,11 +68,39 @@ export default function App() {
     });
   }, [cases, search, statusFilter]);
 
+  const stats = useMemo(() => {
+    return {
+      total: cases.length,
+      needsWhatsapp: cases.filter((x) =>
+        x.recommended_action?.includes("וואטסאפ")
+      ).length,
+      needsCall: cases.filter((x) =>
+        x.recommended_action?.includes("שיחה")
+      ).length,
+      cardReplaced: cases.filter(
+        (x) => x.status === "CARD_REPLACED_WAITING_CHARGE"
+      ).length,
+      cardRequired: cases.filter(
+        (x) => x.status === "CARD_REPLACE_REQUIRED"
+      ).length,
+    };
+  }, [cases]);
+
   if (loading) return <div className="loading">טוען...</div>;
 
   return (
     <div className="page">
       <h1>מערכת חייבים קארדקום</h1>
+
+      <ImportBox onImported={loadCases} />
+
+      <div className="stats">
+        <StatCard label="חייבים פעילים" value={stats.total} />
+        <StatCard label="צריך וואטסאפ" value={stats.needsWhatsapp} />
+        <StatCard label="צריך שיחה" value={stats.needsCall} />
+        <StatCard label="החליפו כרטיס" value={stats.cardReplaced} />
+        <StatCard label="נדרש כרטיס חדש" value={stats.cardRequired} />
+      </div>
 
       <div className="toolbar">
         <input
@@ -92,6 +119,9 @@ export default function App() {
           <option value="ACTIVE_CARD_AUDIT">במעקב</option>
           <option value="CARD_REPLACE_REQUIRED">נדרש כרטיס חדש</option>
           <option value="CARD_REPLACED_WAITING_CHARGE">החליף כרטיס</option>
+          <option value="WHATSAPP_SENT">נשלח וואטסאפ</option>
+          <option value="PHONE_CALL_DONE">בוצעה שיחה</option>
+          <option value="CUSTOMER_PROMISED_TO_UPDATE">הבטיח לעדכן</option>
         </select>
 
         <button className="refresh" onClick={loadCases}>
@@ -151,13 +181,92 @@ export default function App() {
           details={caseDetails}
           loading={loadingDetails}
           onClose={closePanel}
+          onChanged={loadCases}
         />
       )}
     </div>
   );
 }
 
-function CasePanel({ item, details, loading, onClose }) {
+function ImportBox({ onImported }) {
+  const [file, setFile] = useState(null);
+  const [importing, setImporting] = useState(false);
+  const [result, setResult] = useState(null);
+
+  async function uploadFile() {
+    if (!file) {
+      alert("בחר קובץ CSV");
+      return;
+    }
+
+    setImporting(true);
+    setResult(null);
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const response = await fetch("http://localhost:8787/api/import", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await response.json();
+      setResult(data);
+
+      if (data.ok) {
+        await onImported();
+      }
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  return (
+    <div className="import-box">
+      <div>
+        <h2>ייבוא קובץ עסקאות</h2>
+        <p>בחר קובץ CSV מקארדקום והמערכת תעדכן לקוחות ותיקי חייבים.</p>
+      </div>
+
+      <div className="import-actions">
+                {importing && (
+        <div className="import-loader">
+            <div className="spinner"></div>
+            <div>
+            מייבא את הקובץ ומחשב תיקי חייבים... זה יכול לקחת דקה או שתיים.
+            </div>
+        </div>
+        )}
+        <input
+          type="file"
+          accept=".csv,text/csv"
+          onChange={(e) => setFile(e.target.files?.[0] || null)}
+        />
+
+        <button onClick={uploadFile} disabled={importing}>
+        {importing ? "מייבא קובץ, לא לסגור..." : "העלה וייבא"}
+        </button>
+      </div>
+
+      {result && (
+        <div className={result.ok ? "import-result ok" : "import-result error"}>
+          {result.ok ? (
+            <>
+              נקלטו {result.imported} עסקאות, דולגו {result.duplicates} כפולות,
+              נוצרו {result.customersCreated} לקוחות, נפתחו {result.newCases}{" "}
+              תיקים, עודכנו {result.updatedCases}, נסגרו {result.closedCases}.
+            </>
+          ) : (
+            <>שגיאה: {result.error}</>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CasePanel({ item, details, loading, onClose, onChanged }) {
   const debtCase = details?.case;
   const transactions = details?.transactions || [];
   const events = details?.events || [];
@@ -199,6 +308,49 @@ function CasePanel({ item, details, loading, onClose }) {
                 label="תאריך החלפה"
                 value={formatDate(debtCase?.card_replaced_at)}
               />
+            </div>
+
+            <div className="actions-box">
+              <h3>פעולות</h3>
+
+              <div className="case-actions">
+                <ActionButton
+                  label="נשלח וואטסאפ"
+                  type="WHATSAPP_SENT_MANUALLY"
+                  item={item}
+                  onChanged={onChanged}
+                />
+
+                <ActionButton
+                  label="בוצעה שיחה"
+                  type="PHONE_CALL_DONE"
+                  item={item}
+                  onChanged={onChanged}
+                />
+
+                <ActionButton
+                  label="הבטיח לעדכן"
+                  type="CUSTOMER_PROMISED_TO_UPDATE"
+                  item={item}
+                  onChanged={onChanged}
+                />
+
+                <ActionButton
+                  label="סגור ידנית"
+                  type="CASE_CLOSED_MANUALLY"
+                  item={item}
+                  onChanged={onChanged}
+                  danger
+                />
+
+                <ActionButton
+                  label="נטש"
+                  type="CASE_CLOSED_ABANDONED"
+                  item={item}
+                  onChanged={onChanged}
+                  danger
+                />
+              </div>
             </div>
 
             <h3>אירועים בתיק</h3>
@@ -252,6 +404,46 @@ function CasePanel({ item, details, loading, onClose }) {
   );
 }
 
+function ActionButton({ label, type, item, danger, onChanged }) {
+  async function handleClick() {
+    const note = prompt(`הערה עבור: ${label}`);
+
+    if (note === null) return;
+
+    await fetch(`http://localhost:8787/api/debt-cases/${item.id}/event`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        event_type: type,
+        event_text: note || label,
+      }),
+    });
+
+    await onChanged?.();
+    window.location.reload();
+  }
+
+  return (
+    <button
+      className={danger ? "action-button danger" : "action-button"}
+      onClick={handleClick}
+    >
+      {label}
+    </button>
+  );
+}
+
+function StatCard({ label, value }) {
+  return (
+    <div className="stat-card">
+      <div className="stat-number">{value}</div>
+      <div className="stat-label">{label}</div>
+    </div>
+  );
+}
+
 function Detail({ label, value }) {
   return (
     <div className="detail-card">
@@ -269,7 +461,11 @@ function TransactionBadge({ category }) {
     IGNORE_TEST_AUTH: "בדיקה",
   };
 
-  return <span className={`tx-badge tx-${category}`}>{map[category] || category}</span>;
+  return (
+    <span className={`tx-badge tx-${category}`}>
+      {map[category] || category}
+    </span>
+  );
 }
 
 function StatusBadge({ status }) {
@@ -277,7 +473,12 @@ function StatusBadge({ status }) {
     ACTIVE_CARD_AUDIT: "במעקב",
     CARD_REPLACE_REQUIRED: "נדרש כרטיס חדש",
     CARD_REPLACED_WAITING_CHARGE: "החליף כרטיס",
-    CLOSED_SUCCESS: "נסגר",
+    WHATSAPP_SENT: "נשלח וואטסאפ",
+    PHONE_CALL_DONE: "בוצעה שיחה",
+    CUSTOMER_PROMISED_TO_UPDATE: "הבטיח לעדכן",
+    CLOSED_SUCCESS: "נסגר בהצלחה",
+    CLOSED_MANUAL: "נסגר ידנית",
+    CLOSED_ABANDONED: "נטש",
   };
 
   return <div className={`status status-${status}`}>{map[status] || status}</div>;

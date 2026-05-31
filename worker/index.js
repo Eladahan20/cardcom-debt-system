@@ -24,6 +24,11 @@ export default {
 
         const csvText = await file.text();
         const records = parseCsv(csvText);
+        records.sort((a, b) => {
+          const da = buildDateTime(a) || "";
+          const db = buildDateTime(b) || "";
+          return da.localeCompare(db);
+        });
 
         let imported = 0;
         let duplicates = 0;
@@ -80,7 +85,9 @@ export default {
 
           const responseText = clean(row["תשובה"]);
           const responseCategory = categorizeResponse(responseText);
-
+          if (responseCategory === "IGNORE_TEST_AUTH") {
+  continue;
+}
           await env.DB.prepare(`
             INSERT INTO transactions (
               customer_id,
@@ -269,6 +276,80 @@ if (url.pathname.startsWith("/api/debt-cases/") && request.method === "GET") {
     transactions: transactions.results,
     events: events.results,
   });
+}
+
+if (url.pathname.startsWith("/api/debt-cases/") && url.pathname.endsWith("/event") && request.method === "POST") {
+  const parts = url.pathname.split("/");
+  const caseId = parts[3];
+
+  const body = await request.json();
+  const eventType = body.event_type;
+  const eventText = body.event_text || "";
+
+  const debtCase = await env.DB.prepare(`
+    SELECT * FROM debt_cases WHERE id = ?
+  `).bind(caseId).first();
+
+  if (!debtCase) {
+    return json({ error: "Debt case not found" }, 404);
+  }
+
+  await createCaseEvent(
+    env,
+    debtCase.id,
+    debtCase.customer_id,
+    eventType,
+    eventText
+  );
+
+  let nextStatus = null;
+  let closeReason = null;
+
+  if (eventType === "WHATSAPP_SENT_MANUALLY") {
+    nextStatus = "WHATSAPP_SENT";
+  }
+
+  if (eventType === "PHONE_CALL_DONE") {
+    nextStatus = "PHONE_CALL_DONE";
+  }
+
+  if (eventType === "CUSTOMER_PROMISED_TO_UPDATE") {
+    nextStatus = "CUSTOMER_PROMISED_TO_UPDATE";
+  }
+
+  if (eventType === "CASE_CLOSED_MANUALLY") {
+    nextStatus = "CLOSED_MANUAL";
+    closeReason = "Closed manually";
+  }
+
+  if (eventType === "CASE_CLOSED_ABANDONED") {
+    nextStatus = "CLOSED_ABANDONED";
+    closeReason = "Customer abandoned";
+  }
+
+  if (nextStatus) {
+    if (closeReason) {
+      await env.DB.prepare(`
+        UPDATE debt_cases
+        SET
+          status = ?,
+          closed_at = CURRENT_TIMESTAMP,
+          close_reason = ?,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).bind(nextStatus, closeReason, caseId).run();
+    } else {
+      await env.DB.prepare(`
+        UPDATE debt_cases
+        SET
+          status = ?,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).bind(nextStatus, caseId).run();
+    }
+  }
+
+  return json({ ok: true });
 }
     return json({ error: "Not found" }, 404);
   },
